@@ -11,3 +11,5 @@ spring:
   batch:
     jdbc:
       platform: mysql
+    job:
+      name: ${job.name:NONE}
