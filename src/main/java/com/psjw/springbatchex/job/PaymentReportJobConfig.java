@@ -1,6 +1,7 @@
 package com.psjw.springbatchex.job;
 
-import com.psjw.springbatchex.entity.InvalidPaymentAmountException;
+import com.psjw.springbatchex.service.PartnerCorporationService;
+import com.psjw.springbatchex.service.PartnerHttpException;
 import com.psjw.springbatchex.entity.Payment;
 import com.psjw.springbatchex.entity.PaymentRepository;
 import com.psjw.springbatchex.entity.PaymentSource;
@@ -18,14 +19,15 @@ import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
-import org.springframework.batch.core.step.skip.LimitCheckingItemSkipPolicy;
 import org.springframework.batch.item.ItemProcessor;
-import org.springframework.batch.item.database.JpaItemWriter;
+import org.springframework.batch.item.ItemWriter;
 import org.springframework.batch.item.database.JpaPagingItemReader;
 import org.springframework.batch.item.database.builder.JpaPagingItemReaderBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.retry.policy.AlwaysRetryPolicy;
+import org.springframework.retry.policy.NeverRetryPolicy;
 import org.springframework.transaction.PlatformTransactionManager;
 
 @Slf4j
@@ -36,7 +38,7 @@ public class PaymentReportJobConfig {
     private final EntityManagerFactory entityManagerFactory;
     private final JobRepository jobRepository;
     private final PlatformTransactionManager transactionManager;
-    private final PaymentRepository paymentRepository;
+    private final PartnerCorporationService partnerCorporationService;
 
     /**
      * JpaPagingItemReader -> limit, offset기반의 sql 조회만들기
@@ -60,33 +62,34 @@ public class PaymentReportJobConfig {
     public Step paymentReportStep(
             JpaPagingItemReader<PaymentSource> paymentReportReader,
             ItemProcessor<PaymentSource, Payment> paymentReportProcessor,
-            JpaItemWriter<Payment> paymentJpaItemWriter
+            ItemWriter<Payment> paymentItemWriter
     ) {
-        // FaultTolerantStepBuilder를 통해서 기본 정책, 기본 policy, skipLimit 기본값
-        // FaultTolerantChunkProcessor 실질적으로 내결합성의 관련된 로직들 수행 -> skiplimit 초과했는지
+        /**
+         * 1. 상호명을 더 이상 PaymentSource에서 관리하지 않음
+         * 2. PaymentSource에서는 사업자 번호를 추가하고 이 사업자 번호 기반으로
+         * 3. Payment를 저장할때 사업자 번호를 기준으로 HTTP 통신 하여 상호명 질의
+         */
         return new StepBuilder("paymentReportStep", jobRepository)
                 .<PaymentSource, Payment>chunk(10, transactionManager)
                 .reader(paymentReportReader)
                 .processor(paymentReportProcessor)
-                .writer(paymentJpaItemWriter)
+                .writer(paymentItemWriter)
                 .faultTolerant()
-//                .skipLimit(2) // 최대 2번 까지 skip 허용, skip = 예외 발생
-                .skip(InvalidPaymentAmountException.class)
-//                .skipPolicy(new LimitCheckingItemSkipPolicy(
-//                        1,
-//                        throwable -> {
-//                            if (throwable instanceof InvalidPaymentAmountException) {
-//                                return false;
-//                            } else if (throwable instanceof IllegalStateException) {
-//                                return false;
-//                            } else {
-//                                return false;
-//                            }
-//                        }
-//                )) //횟수 기반
-//                .skipPolicy(new AlwaysSkipItemSkipPolicy()) // 항상 skip을 하는 정책
-                //항상 skip을 허용하지 않음, 다음 Policy 예를 들어 LimitCheckingItemSkipPolicy가 동작
-//                .skipPolicy(new NeverSkipItemSkipPolicy()) // 항상 skip을 하지 않는 정책
+                /**
+                 * total item = 20, chunk size = 10
+                 * item processor 10% 확률로 오류 발생
+                 *
+                 * chunk 1: [1 ~ 10] -> 높은 확률로 오류가 발생 count 1
+                 * chunk 2: [11 ~ 20] -> 높은 확률로 오류가 발생 count 2
+                 *
+                 */
+                /**
+                 * FaultTolerantStepBuilder -> Skip에 대한 설정 및 정책을 설정, retry
+                 */
+                .retryLimit(2)
+                .retry(PartnerHttpException.class)
+//                .retryPolicy(new AlwaysRetryPolicy())
+//                .retryPolicy(new NeverRetryPolicy()) //1번만 재시도 수행`
                 .build();
     }
 
@@ -109,32 +112,14 @@ public class PaymentReportJobConfig {
 
     @Bean
     public ItemProcessor<PaymentSource, Payment> itemProcessor() {
-        /**
-         * 최종 결제 금액이 0원 -> payment -> X
-         */
         return paymentSource -> {
-            // 최종 금액이 0원인 경우 제외
-//            if(paymentSource.getFinalAmount().compareTo(BigDecimal.ZERO) == 0){
-//                return null; //wirter에 전달 X
-//            }
-
-            /**
-             * 할인 금액이 마이너스가 되는 케이스
-             *
-             * 1,000 - 100(할인) = 900
-             * 음수가 들어오는 경우는 원장에서 어떤 처리가 잘못된
-             */
-            //할인 금액이 음수인 경우
-            if (paymentSource.getDiscountAmount().signum() == -1) {
-                final String msg = "할인 금액이 0 아닌 결제는 처리할 수 없습니다. 현재 할인 금액 : " + paymentSource.getDiscountAmount();
-                log.error(msg);
-                throw new InvalidPaymentAmountException(msg);
-            }
-
+            final String partnerCorpName = partnerCorporationService.getPartnerCorpName(
+                    paymentSource.getPartnerBusinessRegistrationNumber());
             return new Payment(
                     null,
                     paymentSource.getFinalAmount(),
                     paymentSource.getPaymentDate(),
+                    partnerCorpName,
                     "PAYMENT"
             );
         };
@@ -151,10 +136,12 @@ public class PaymentReportJobConfig {
      * @return
      */
     @Bean
-    public JpaItemWriter<Payment> paymentJpaItemWriter() {
-        JpaItemWriter<Payment> writer = new JpaItemWriter<>();
-        writer.setEntityManagerFactory(entityManagerFactory);
-        return writer;
+    public ItemWriter<Payment> paymentReportWriter() {
+        return chunk -> {
+            for (Payment payment : chunk) {
+                log.info("Writer payment : {}", payment);
+            }
+        };
     }
 
 //    private ItemWriter<Payment> itemWriter() {
