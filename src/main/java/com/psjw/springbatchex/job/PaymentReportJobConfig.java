@@ -75,10 +75,11 @@ public class PaymentReportJobConfig {
                 .reader(paymentReportReader)
                 .processor(paymentReportProcessor)
                 .writer(paymentItemWriter)
-                .faultTolerant()
-                .retryLimit(2)
-                .retry(PartnerHttpException.class)
-                .retryPolicy(new NeverRetryPolicy())
+                .listener(new StepDurationTrackerListener())
+//                .faultTolerant()
+//                .retryLimit(2)
+//                .retry(PartnerHttpException.class)
+//                .retryPolicy(new NeverRetryPolicy())
                 .build();
     }
 
@@ -102,13 +103,13 @@ public class PaymentReportJobConfig {
     @Bean
     public ItemProcessor<PaymentSource, Payment> itemProcessor() {
         return paymentSource -> {
-            final String partnerCorpName = partnerCorporationService.getPartnerCorpName(
-                    paymentSource.getPartnerBusinessRegistrationNumber());
+//            final String partnerCorpName = partnerCorporationService.getPartnerCorpName(
+//                    paymentSource.getPartnerBusinessRegistrationNumber());
             return new Payment(
                     null,
                     paymentSource.getFinalAmount(),
                     paymentSource.getPaymentDate(),
-                    partnerCorpName,
+                    "partnerCorpName",
                     "PAYMENT"
             );
         };
