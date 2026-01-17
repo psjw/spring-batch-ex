@@ -49,6 +49,7 @@ public class PaymentReportJobConfig {
     ) {
         return new JobBuilder("paymentReportJob", jobRepository)
                 .incrementer(new RunIdIncrementer())
+                .listener(new JobDurationTrackerListener())
                 .start(paymentReportStep)
                 .build();
     }
@@ -75,21 +76,9 @@ public class PaymentReportJobConfig {
                 .processor(paymentReportProcessor)
                 .writer(paymentItemWriter)
                 .faultTolerant()
-                /**
-                 * total item = 20, chunk size = 10
-                 * item processor 10% 확률로 오류 발생
-                 *
-                 * chunk 1: [1 ~ 10] -> 높은 확률로 오류가 발생 count 1
-                 * chunk 2: [11 ~ 20] -> 높은 확률로 오류가 발생 count 2
-                 *
-                 */
-                /**
-                 * FaultTolerantStepBuilder -> Skip에 대한 설정 및 정책을 설정, retry
-                 */
                 .retryLimit(2)
                 .retry(PartnerHttpException.class)
-//                .retryPolicy(new AlwaysRetryPolicy())
-//                .retryPolicy(new NeverRetryPolicy()) //1번만 재시도 수행`
+                .retryPolicy(new NeverRetryPolicy())
                 .build();
     }
 
