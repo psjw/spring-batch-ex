@@ -30,6 +30,13 @@ public class PaymentSource {
     private String partnerCorpName;
 
     /**
+     * 파트너 사업자 번호
+     * 사업자 번호 11111 -> 배달의 민족
+     */
+    @Column(nullable = false, length = 100)
+    private String partnerBusinessRegistrationNumber;
+
+    /**
      * 원래금액
      */
     @Column(nullable = false)

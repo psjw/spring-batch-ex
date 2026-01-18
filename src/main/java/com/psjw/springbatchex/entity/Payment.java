@@ -11,12 +11,14 @@ import java.time.LocalDate;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 @Entity
 @Table(name = "payment")
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString
 public class Payment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -27,11 +29,21 @@ public class Payment {
     @Column(nullable = false)
     private BigDecimal amount;
 
+
+
     /**
      * 결제일
      */
     @Column(nullable = false)
     private LocalDate paymentDate;
+
+
+    /**
+     * 파트너 회사명
+     */
+    @Column(nullable = false, length = 100)
+    private String partnerCorpName;
+
 
     /**
      * 결제 상태, 취소, 부분 취소
