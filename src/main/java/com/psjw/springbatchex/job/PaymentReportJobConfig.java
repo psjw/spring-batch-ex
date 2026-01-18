@@ -71,15 +71,20 @@ public class PaymentReportJobConfig {
          * 3. Payment를 저장할때 사업자 번호를 기준으로 HTTP 통신 하여 상호명 질의
          */
         return new StepBuilder("paymentReportStep", jobRepository)
-                .<PaymentSource, Payment>chunk(10, transactionManager)
+                .<PaymentSource, Payment>chunk(20, transactionManager)
                 .reader(paymentReportReader)
                 .processor(paymentReportProcessor)
                 .writer(paymentItemWriter)
-                .listener(new StepDurationTrackerListener())
-//                .faultTolerant()
-//                .retryLimit(2)
-//                .retry(PartnerHttpException.class)
-//                .retryPolicy(new NeverRetryPolicy())
+                .listener(new SampleChunkListener())
+                .listener(new SampleItemReadListener())
+                .listener(new SampleItemProcessListener())
+                .listener(new SampleItemWriteListener())
+                /**
+                 * 1. chunk SampleChunkListener
+                 * 2. reader SampleItemReadListener
+                 * 3. processor SampleItemProcessListener
+                 * 4. writer SampleItemWriteListener
+                 */
                 .build();
     }
 
