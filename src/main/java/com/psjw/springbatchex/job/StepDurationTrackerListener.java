@@ -2,6 +2,7 @@ package com.psjw.springbatchex.job;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.StepExecution;
@@ -28,14 +29,17 @@ public class StepDurationTrackerListener implements StepExecutionListener {
         final long hours = durationMillis / (1_000 * 60 * 60);
         final long minutes = (durationMillis % (1_000 * 60 * 60)) / (1_000 * 60);
         final long seconds = (durationMillis % (1_000 * 60)) / 1_000;
+        final long millis = durationMillis % 1_000;
 
         String duration;
         if (hours > 0) {
             duration = String.format("%d시간 %d분", hours, minutes);
         } else if (minutes > 0) {
             duration = String.format("%d분", minutes);
-        } else {
+        } else if (seconds > 0) {
             duration = String.format("%d초", seconds);
+        } else {
+            duration = String.format("%dms", millis);
         }
 
         log.info(

@@ -39,6 +39,7 @@ public class PaymentReportJobConfig {
     private final JobRepository jobRepository;
     private final PlatformTransactionManager transactionManager;
     private final PartnerCorporationService partnerCorporationService;
+    private final int chunkSize = 10;
 
     /**
      * JpaPagingItemReader -> limit, offset기반의 sql 조회만들기
@@ -66,25 +67,16 @@ public class PaymentReportJobConfig {
             ItemWriter<Payment> paymentItemWriter
     ) {
         /**
-         * 1. 상호명을 더 이상 PaymentSource에서 관리하지 않음
-         * 2. PaymentSource에서는 사업자 번호를 추가하고 이 사업자 번호 기반으로
-         * 3. Payment를 저장할때 사업자 번호를 기준으로 HTTP 통신 하여 상호명 질의
+         * 1. payment_source 테이블 및 인덱스 생성
+         * 2. payment_source 데이터 프로시저로 셋업, 2025-05-02 이전 데이터 셋업, 2025-05-02 데이터 셋업
+         * 3. Step 소요시간, Chunk 소요시간을 측정하는 리스너 작성
          */
         return new StepBuilder("paymentReportStep", jobRepository)
-                .<PaymentSource, Payment>chunk(20, transactionManager)
+                .<PaymentSource, Payment>chunk(chunkSize, transactionManager)
                 .reader(paymentReportReader)
                 .processor(paymentReportProcessor)
                 .writer(paymentItemWriter)
-                .listener(new SampleChunkListener())
-                .listener(new SampleItemReadListener())
-                .listener(new SampleItemProcessListener())
-                .listener(new SampleItemWriteListener())
-                /**
-                 * 1. chunk SampleChunkListener
-                 * 2. reader SampleItemReadListener
-                 * 3. processor SampleItemProcessListener
-                 * 4. writer SampleItemWriteListener
-                 */
+                .listener(new ChunkDurationTrackerListener())
                 .build();
     }
 
@@ -96,72 +88,29 @@ public class PaymentReportJobConfig {
         return new JpaPagingItemReaderBuilder<PaymentSource>()
                 .name("paymentReportReader")
                 .entityManagerFactory(entityManagerFactory)
-                /**
-                 * Payment_Source where payment_date = 2025-05-02 -> Job Parameter
-                 */
                 .queryString("SELECT ps FROM PaymentSource ps WHERE ps.paymentDate = :paymentDate")
                 .parameterValues(Collections.singletonMap("paymentDate", paymentDate))
-                .pageSize(10)
+                .pageSize(chunkSize)
                 .build();
     }
 
     @Bean
     public ItemProcessor<PaymentSource, Payment> itemProcessor() {
-        return paymentSource -> {
-//            final String partnerCorpName = partnerCorporationService.getPartnerCorpName(
-//                    paymentSource.getPartnerBusinessRegistrationNumber());
-            return new Payment(
-                    null,
-                    paymentSource.getFinalAmount(),
-                    paymentSource.getPaymentDate(),
-                    "partnerCorpName",
-                    "PAYMENT"
-            );
-        };
+        return paymentSource -> new Payment(
+                null,
+                paymentSource.getFinalAmount(),
+                paymentSource.getPaymentDate(),
+                "partnerCorpName",
+                "PAYMENT"
+        );
     }
 
-    /**
-     * 데이터베이스에 반영을 한다
-     * payment table -> insert
-     * 단건 insert 여러개
-     * 1. 배치 어플리케이션 -> mysql서버로 쿼리전달
-     * 2. mysql 서버 해당 sql 수행이후 ACK 보냄
-     * 3. 배치 어플리케이션에서 ACK 확인
-     *
-     * @return
-     */
     @Bean
     public ItemWriter<Payment> paymentReportWriter() {
         return chunk -> {
-            for (Payment payment : chunk) {
-                log.info("Writer payment : {}", payment);
-            }
+//            for (Payment payment : chunk) {
+//                log.info("Writer payment : {}", payment);
+//            }
         };
     }
-
-//    private ItemWriter<Payment> itemWriter() {
-//        return paymentRepository::saveAllAndFlush;
-//    }
-
-//    private ItemWriter<Payment> itemWriter() {
-//        return items -> items.forEach(paymentSource ->
-//                log.info("Payment 로그 출력: 금액={}, 결제일={}, 상태={}",
-//                        paymentSource.getAmount(),
-//                        paymentSource.getPaymentDate(),
-//                        paymentSource.getStatus()));
-//    }
-
-//    private ItemWriter<PaymentSource> itemWriter(){
-//        return items -> {
-//            items.forEach(item -> {
-//                log.info("PaymentSource 로그 출력: 원래 금액={}, 할인 금액={}, 최종 금액={}, 결제일={}",
-//                        item.getOriginalAmount(),
-//                        item.getDiscountAmount(),
-//                        item.getFinalAmount(),
-//                        item.getPaymentDate()
-//                );
-//            });
-//        };
-//
-//    }
 }
