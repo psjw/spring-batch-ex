@@ -35,9 +35,9 @@ public class StepDurationTrackerListener implements StepExecutionListener {
         if (hours > 0) {
             duration = String.format("%d시간 %d분", hours, minutes);
         } else if (minutes > 0) {
-            duration = String.format("%d분", minutes);
+            duration = String.format("%d분 %d초", minutes, seconds);
         } else if (seconds > 0) {
-            duration = String.format("%d초", seconds);
+            duration = String.format("%d.%03d초", seconds, millis);
         } else {
             duration = String.format("%dms", millis);
         }

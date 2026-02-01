@@ -26,14 +26,17 @@ public class ChunkDurationTrackerListener implements ChunkListener {
         final long hours = durationMillis / (1_000 * 60 * 60);
         final long minutes = (durationMillis % (1_000 * 60 * 60)) / (1_000 * 60);
         final long seconds = (durationMillis % (1_000 * 60)) / 1_000;
+        final long millis = durationMillis % 1_000;
 
         String duration;
         if (hours > 0) {
             duration = String.format("%d시간 %d분", hours, minutes);
         } else if (minutes > 0) {
             duration = String.format("%d분", minutes);
-        } else {
+        } else if (seconds > 0) {
             duration = String.format("%d초", seconds);
+        } else {
+            duration = String.format("%dms", millis);
         }
 
         log.info("Chunck #{}, Duration: {}", commitNumber, duration);
