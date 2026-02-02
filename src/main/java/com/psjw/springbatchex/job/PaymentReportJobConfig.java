@@ -1,9 +1,7 @@
 package com.psjw.springbatchex.job;
 
 import com.psjw.springbatchex.service.PartnerCorporationService;
-import com.psjw.springbatchex.service.PartnerHttpException;
 import com.psjw.springbatchex.entity.Payment;
-import com.psjw.springbatchex.entity.PaymentRepository;
 import com.psjw.springbatchex.entity.PaymentSource;
 import jakarta.persistence.EntityManagerFactory;
 
@@ -26,8 +24,6 @@ import org.springframework.batch.item.database.builder.JpaPagingItemReaderBuilde
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.retry.policy.AlwaysRetryPolicy;
-import org.springframework.retry.policy.NeverRetryPolicy;
 import org.springframework.transaction.PlatformTransactionManager;
 
 @Slf4j
@@ -62,7 +58,8 @@ public class PaymentReportJobConfig {
      */
     @Bean
     public Step paymentReportStep(
-            JpaPagingItemReader<PaymentSource> paymentReportReader,
+//            JpaPagingItemReader<PaymentSource> limitOffsetItemReader,
+            NoOffsetItemReader<PaymentSource> noOffsetItemReader,
             ItemProcessor<PaymentSource, Payment> paymentReportProcessor,
             ItemWriter<Payment> paymentItemWriter
     ) {
@@ -73,25 +70,43 @@ public class PaymentReportJobConfig {
          */
         return new StepBuilder("paymentReportStep", jobRepository)
                 .<PaymentSource, Payment>chunk(chunkSize, transactionManager)
-                .reader(paymentReportReader)
+//                .reader(limitOffsetItemReader)
+                .reader(noOffsetItemReader)
                 .processor(paymentReportProcessor)
                 .writer(paymentItemWriter)
                 .listener(new ChunkDurationTrackerListener())
                 .build();
     }
 
+//    @Bean
+//    @StepScope //@Value로 받으려면
+//    public JpaPagingItemReader<PaymentSource> limitOffsetItemReader(
+//            @Value("#{jobParameters['paymentDate']}") LocalDate paymentDate
+//    ) {
+//        return new JpaPagingItemReaderBuilder<PaymentSource>()
+//                .name("paymentReportReader")
+//                .entityManagerFactory(entityManagerFactory)
+//                .queryString("SELECT ps FROM PaymentSource ps WHERE ps.paymentDate = :paymentDate")
+//                .parameterValues(Collections.singletonMap("paymentDate", paymentDate))
+//                .pageSize(chunkSize)
+//                .build();
+//    }
+
     @Bean
-    @StepScope //@Value로 받으려면
-    public JpaPagingItemReader<PaymentSource> paymentReportReader(
+    @StepScope
+    public NoOffsetItemReader<PaymentSource> noOffsetItemReader(
             @Value("#{jobParameters['paymentDate']}") LocalDate paymentDate
     ) {
-        return new JpaPagingItemReaderBuilder<PaymentSource>()
-                .name("paymentReportReader")
+        return new NoOffsetItemReaderBuilder<PaymentSource>()
                 .entityManagerFactory(entityManagerFactory)
-                .queryString("SELECT ps FROM PaymentSource ps WHERE ps.paymentDate = :paymentDate")
+                .queryString("SELECT ps FROM PaymentSource ps WHERE ps.paymentDate = :paymentDate ORDER BY ps.id DESC")
                 .parameterValues(Collections.singletonMap("paymentDate", paymentDate))
-                .pageSize(chunkSize)
+                .name("noOffsetItemReader")
+                .idExtractor(PaymentSource::getId)
+                .targetType(PaymentSource.class)
+                .chunkSize(chunkSize)
                 .build();
+
     }
 
     @Bean

@@ -1706,3 +1706,54 @@
 * Chunk #1000, Duration: 2278ms
 
 </details>
+
+
+
+/**
+No Offset
+1. 시작점 조회 쿼리
+2. 첫 번째 Chunk 조회 쿼리 -> 시작점 기준으로 진행
+3. 두 번째 Chunk 조회 쿼리
+4. 모든 데이터를 읽을 때 까지 반복
+   */
+
+use spring_batch;
+# 시작 지점 조회쿼리
+select id
+from payment_source
+where payment_date = '2025-05-02' #조회 조건
+order by id desc
+limit 1;
+
+#첫번째 Chunk조회 쿼리
+select id,
+payment_date,
+discount_amount,
+final_amount,
+original_amount,
+partner_business_registration_number,
+partner_corp_name
+from payment_source
+where payment_date = '2025-05-02' #조회 조건
+and id < 13370001 #13370000(시작점 ID) + 1
+order by id desc
+limit 1000;
+
+
+
+#두번째 Chunk조회 쿼리
+select id,
+payment_date,
+discount_amount,
+final_amount,
+original_amount,
+partner_business_registration_number,
+partner_corp_name
+from payment_source
+where payment_date = '2025-05-02' #조회 조건
+and id < 13369001 #13370000 - 1000(Chunk Size)
+order by id desc
+limit 1000;
+
+
+
