@@ -10,6 +10,7 @@ import java.util.Collections;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.jpa.HibernateHints;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.StepScope;
@@ -112,6 +113,16 @@ public class PaymentReportJobConfig {
 //
 //    }
 
+    /**
+     * JpaCursorItemReader를 사용하여 특정 결제일(`paymentDate`)의 결제 원천 데이터를 조회합니다.
+     * <p>
+     * - `paymentDate`는 JobParameter로 전달받습니다.
+     * - Cursor 기반으로 동작하여 대용량 데이터를 처리할 때 메모리 사용량을 최소화할 수 있습니다.
+     * - `HINT_FETCH_SIZE`를 `Integer.MIN_VALUE`로 설정하여 ResultSet에서 한 번에 한 행씩 가져오도록 DB에 힌트를 줍니다. (스트리밍)
+     *
+     * @param paymentDate JobParameter로 전달되는 결제일
+     * @return JpaCursorItemReader<PaymentSource>
+     */
     @Bean
     @StepScope
     public JpaCursorItemReader<PaymentSource> cursorItemReader(
@@ -122,10 +133,18 @@ public class PaymentReportJobConfig {
                 .entityManagerFactory(entityManagerFactory)
                 //client -> 전체 데이터 ->
                 //server -> 하나씩 -> mysql
-                .queryString("""
-                        SELECT ps FROM PaymentSource ps WHERE ps.paymentDate = :paymentDate
-                        """)
+                // JPQL 쿼리 작성: SQL이 아닌 JPQL(Java Persistence Query Language)을 사용
+                .queryString("SELECT ps FROM PaymentSource ps WHERE ps.paymentDate = :paymentDate")
+                // 쿼리 파라미터 설정
                 .parameterValues(Collections.singletonMap("paymentDate", paymentDate))
+                // Hibernate Hint 설정: HINT_FETCH_SIZE
+                // 이 옵션은 데이터베이스에서 데이터를 가져올 때
+                // 서버 측 커서(Server-Side Cursor)를 사용할지 클라이언트 측 커서(Client-Side Cursor)를 사용할지 결정하는 중요한 역할을 합니다.
+                // Integer.MIN_VALUE: 이 값을 설정하면 JDBC 드라이버에게 결과를 스트리밍 방식으로 받아오도록 요청합니다.
+                // 즉, 데이터베이스 서버에 커서를 유지한 채로, 애플리케이션에서는 next()를 호출할 때마다 한 건씩 데이터를 가져옵니다.
+                // 이를 통해 대용량의 데이터셋을 처리하더라도 애플리케이션의 메모리 사용량을 최소화할 수 있어 OOM(OutOfMemory) 에러를 방지합니다.
+                // 만약 이 옵션이 없다면, JPA 구현체(Hibernate)는 기본적으로 조회된 모든 결과를 애플리케이션 메모리로 가져와서(Client-Side Cursor) 처리하려고 시도할 수 있습니다.
+                .hintValues(Collections.singletonMap(HibernateHints.HINT_FETCH_SIZE, Integer.MIN_VALUE))
                 .build();
     }
 
