@@ -19,7 +19,9 @@ import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemWriter;
+import org.springframework.batch.item.database.JpaCursorItemReader;
 import org.springframework.batch.item.database.JpaPagingItemReader;
+import org.springframework.batch.item.database.builder.JpaCursorItemReaderBuilder;
 import org.springframework.batch.item.database.builder.JpaPagingItemReaderBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -59,7 +61,8 @@ public class PaymentReportJobConfig {
     @Bean
     public Step paymentReportStep(
 //            JpaPagingItemReader<PaymentSource> limitOffsetItemReader,
-            NoOffsetItemReader<PaymentSource> noOffsetItemReader,
+//            NoOffsetItemReader<PaymentSource> noOffsetItemReader,
+            JpaCursorItemReader<PaymentSource> jpaCursorItemReader,
             ItemProcessor<PaymentSource, Payment> paymentReportProcessor,
             ItemWriter<Payment> paymentItemWriter
     ) {
@@ -71,7 +74,7 @@ public class PaymentReportJobConfig {
         return new StepBuilder("paymentReportStep", jobRepository)
                 .<PaymentSource, Payment>chunk(chunkSize, transactionManager)
 //                .reader(limitOffsetItemReader)
-                .reader(noOffsetItemReader)
+                .reader(jpaCursorItemReader)
                 .processor(paymentReportProcessor)
                 .writer(paymentItemWriter)
                 .listener(new ChunkDurationTrackerListener())
@@ -92,21 +95,38 @@ public class PaymentReportJobConfig {
 //                .build();
 //    }
 
+//    @Bean
+//    @StepScope
+//    public NoOffsetItemReader<PaymentSource> noOffsetItemReader(
+//            @Value("#{jobParameters['paymentDate']}") LocalDate paymentDate
+//    ) {
+//        return new NoOffsetItemReaderBuilder<PaymentSource>()
+//                .entityManagerFactory(entityManagerFactory)
+//                .queryString("SELECT ps FROM PaymentSource ps WHERE ps.paymentDate = :paymentDate ORDER BY ps.id DESC")
+//                .parameterValues(Collections.singletonMap("paymentDate", paymentDate))
+//                .name("noOffsetItemReader")
+//                .idExtractor(PaymentSource::getId)
+//                .targetType(PaymentSource.class)
+//                .chunkSize(chunkSize)
+//                .build();
+//
+//    }
+
     @Bean
     @StepScope
-    public NoOffsetItemReader<PaymentSource> noOffsetItemReader(
+    public JpaCursorItemReader<PaymentSource> cursorItemReader(
             @Value("#{jobParameters['paymentDate']}") LocalDate paymentDate
-    ) {
-        return new NoOffsetItemReaderBuilder<PaymentSource>()
+    ){
+        return new JpaCursorItemReaderBuilder<PaymentSource>()
+                .name("cursorItemReader")
                 .entityManagerFactory(entityManagerFactory)
-                .queryString("SELECT ps FROM PaymentSource ps WHERE ps.paymentDate = :paymentDate ORDER BY ps.id DESC")
+                //client -> 전체 데이터 ->
+                //server -> 하나씩 -> mysql
+                .queryString("""
+                        SELECT ps FROM PaymentSource ps WHERE ps.paymentDate = :paymentDate
+                        """)
                 .parameterValues(Collections.singletonMap("paymentDate", paymentDate))
-                .name("noOffsetItemReader")
-                .idExtractor(PaymentSource::getId)
-                .targetType(PaymentSource.class)
-                .chunkSize(chunkSize)
                 .build();
-
     }
 
     @Bean
