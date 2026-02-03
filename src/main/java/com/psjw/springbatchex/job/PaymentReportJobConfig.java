@@ -59,6 +59,19 @@ public class PaymentReportJobConfig {
      *
      * @return
      */
+    /**
+     * Client - Side -> 5,000,000로드
+     * Step 시작 20:02:06.486+09:00
+     * Chunk 1시작 20:02:39.858+09:00
+     * 33.390초 이후 시작 -> 5,000,000 조회 하여 JVM 메모리에 로드 시키는 시간
+     *
+     * Server - Side -> 1,000
+     *
+     * OOM ->
+     * 배치 애플리케이션 1GB
+     * 처리해야할 데이터는 5,000,000 -> 2GB
+     * VM OPTION : -Xms20m -Xmx20m
+     */
     @Bean
     public Step paymentReportStep(
 //            JpaPagingItemReader<PaymentSource> limitOffsetItemReader,
