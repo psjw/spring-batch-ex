@@ -39,7 +39,7 @@ public class ChunkDurationTrackerListener implements ChunkListener {
             duration = String.format("%dms", millis);
         }
 
-        log.info("Chunck #{}, Duration: {}", commitNumber, duration);
+        log.info("Chunk #{}, Duration: {}", commitNumber, duration);
     }
 
 }
